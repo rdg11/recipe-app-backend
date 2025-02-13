@@ -29,7 +29,7 @@ def upgrade():
     sa.Column('name', mysql.VARCHAR(length=255), nullable=False),
     sa.Column('description', mysql.TEXT(), nullable=True),
     sa.Column('steps', mysql.TEXT(), nullable=True),
-    sa.Column('is_vegan', mysql.TINYINT(display_width=1), server_default=sa.text("'0'"), autoincrement=False, nullable=True),
+    sa.Column('is_vegetarian', mysql.TINYINT(display_width=1), server_default=sa.text("'0'"), autoincrement=False, nullable=True),
     sa.Column('is_gluten_free', mysql.TINYINT(display_width=1), server_default=sa.text("'0'"), autoincrement=False, nullable=True),
     sa.Column('is_nut_free', mysql.TINYINT(display_width=1), server_default=sa.text("'0'"), autoincrement=False, nullable=True),
     sa.PrimaryKeyConstraint('recipe_id'),
@@ -38,7 +38,7 @@ def upgrade():
     mysql_engine='InnoDB'
     )
     with op.batch_alter_table('recipe', schema=None) as batch_op:
-        batch_op.create_index('idx_dietary_flags', ['is_vegan', 'is_gluten_free', 'is_nut_free'], unique=False)
+        batch_op.create_index('idx_dietary_flags', ['is_vegetarian', 'is_gluten_free', 'is_nut_free'], unique=False)
 
     
     op.create_table('users',

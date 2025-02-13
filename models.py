@@ -73,7 +73,7 @@ class Recipe(db.Model):
     name = db.Column(db.String(255))
     description = db.Column(db.Text)
     steps = db.Column(db.Text)
-    is_vegan = db.Column(db.Boolean)
+    is_vegetarian = db.Column(db.Boolean)
     is_gluten_free = db.Column(db.Boolean)
     is_nut_free = db.Column(db.Boolean)
 
@@ -83,7 +83,7 @@ class Recipe(db.Model):
             "name": self.name,
             "description": self.description,
             "steps": self.steps,
-            "is_egan": self.is_vegan,
+            "is_vegetarian": self.is_vegetarian,
             "is_gluten_free": self.is_gluten_free,
             "is_nut_free": self.is_nut_free
         }

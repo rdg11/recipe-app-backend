@@ -131,7 +131,17 @@ def remove_pantry_ingredient(uid):
     db.session.commit()
     return jsonify({"message": "Ingredient removed from pantry."})
 
+#Recipe endpoint
+@app.route('/recipe', methods=['GET'])
+def get_recipes():
+    recipes = Recipe.query.all()
+    return jsonify([recipe.to_json() for recipe in recipes])
+
+
+
 if __name__ == "__main__":
     #with app.app_context():
         #db.create_all()
     app.run(debug=True)
+
+
