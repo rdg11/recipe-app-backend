@@ -1,155 +1,137 @@
 #contains main endpoints CREATE READ UPDATE DELETE
+# main.py: Updated with new models and config
 from flask import request, jsonify
 from config import app, db
-from models import Profiles, Ingredient, PantryIngredient
-from sqlalchemy import select
+from models import User, Ingredient, PantryIngredient, Recipe, RecipeIngredient, Review, UserFavoriteRecipe
+from flask_migrate import Migrate
 
-##### profile logic #####
+migrate = Migrate(app, db)
 
-@app.route("/profiles", methods=["GET"])
-def get_profiles():
-    profiles = Profiles.query.all()
-    json_profiles = list(map(lambda x: x.to_json(), profiles))
-    return jsonify({"profiles": json_profiles})
+##### User (Profile) Endpoints #####
+@app.route("/users", methods=["GET"])
+def get_users():
+    users = User.query.all()
+    json_users = [user.to_json() for user in users]
+    return jsonify({"users": json_users})
 
-@app.route("/create_profile", methods = ["POST"])
-def create_profile():
-    first_name = request.json.get("firstName")
-    last_name = request.json.get("LastName")
-    email = request.json.get("email")
+@app.route("/users", methods=["POST"])
+def create_user():
+    data = request.json
+    first_name = data.get("firstName")
+    last_name = data.get("lastName")
+    email = data.get("email")
     
     if not first_name or not last_name or not email:
-        return(
-            jsonify({"message": "Please fill out all required fields"}), 400, #first & last name and email
-        )
-    new_profile = Profiles(first_name = first_name, last_name = last_name, email = email)
-    try:
-        db.session.add(new_profile)
-        db.session.commit()
-    except Exception as e:
-        return jsonify({"message": str(e)}), 400
+        return jsonify({"message": "Please fill out all required fields (firstName, lastName, email)."}), 400
     
-    return jsonify({"message": "User Created! Welcome!"})
-
-
-@app.route("/update_profile/int:user_ud>", methods=["PATCH"])
-def update_profile(user_id):
-    profile = Profiles.query.get(user_id)
-    if not profile:
-        return jsonify({"message": "User not Found"})
-    
-    data = request.json
-    profile.first_name = data.get("firstName", profile.first_name) #searches key and updates firstname if different from entry there
-    profile.last_name = data.get("lastName", profile.last_name)
-    profile.email = data.get("email", profile.email)
-    
-    db.session.commit()
-    
-    return jsonify({"message": "User Updated!"})
-
-@app.route("/delete_profile/int:user_ud>", methods=["DELETE"])
-def delete_profile(user_id):
-    profile = Profiles.query.get(user_id)
-    if not profile:
-        return jsonify({"message": "User not Found"})
-    
-    db.session.delete(profile)
-    db.session.commit()
-    
-    return jsonify({"message": "User Deleted"})
-
-##### pantry logic #####
-@app.route('/pantry', methods=['GET'])
-def get_pantry(uid):
-    # get all pantry ingredients matching user_id
-    pantry_ingredients = db.session.query(PantryIngredient).filter_by(user_id=uid).all()
-
-    # get ingredients matching each pantry_ingredients' associated ingredient_id
-    ingredients = []
-    for item in pantry_ingredients:
-        ingredient = db.session.query(Ingredient).filter_by(ingredient_id=item.ingredient_id).first()
-        ingredients.append({
-            'ingredient_id': ingredient.id,
-            'name': ingredient.name,            
-            'quantity': item.quantity,
-            'unit': item.unit,
-            'contains_nuts': ingredient.contains_nuts,
-            'contains_gluten': ingredient.contains_gluten,
-            'contains_meat': ingredient.contains_meat,
-        })
-
-    # return json of pantry
-    return jsonify(ingredients)
-
-@app.route('/pantry', methods=['POST'])
-def add_pantry_ingredient(uid):
-    # get attributes of pantry ingredient
-    ingredientid = request.json.get("ingredient_id")
-    qty = request.json.get("quantity")
-    munit = request.json.get("unit")
-
-    # test validity
-    if not ingredientid or not qty or not munit:
-        return(
-            jsonify({'message': 'Please fill out all required fields'}), 400, #ingredient id, quantity, unit
-        )
-
-    new_item = PantryIngredient(
-        user_id=uid,
-        ingredient_id=ingredientid,
-        quantity=qty,
-        unit=munit
+    new_user = User(
+        first_name=first_name,
+        last_name=last_name,
+        email=email,
+        is_vegetarian=data.get("isVegetarian", False),
+        is_nut_free=data.get("isNutFree", False),
+        is_gluten_free=data.get("isGlutenFree", False)
     )
+    try:
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({"message": "User created successfully!"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"message": str(e)}), 400
 
-    # create new Pantry Ingredient entry
+@app.route("/users/<int:user_id>", methods=["PATCH"])
+def update_user(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"message": "User not found."}), 404
+
+    data = request.json
+    user.first_name = data.get("firstName", user.first_name)
+    user.last_name = data.get("lastName", user.last_name)
+    user.email = data.get("email", user.email)
+    user.is_vegetarian = data.get("isVegetarian", user.is_vegetarian)
+    user.is_nut_free = data.get("isNutFree", user.is_nut_free)
+    user.is_gluten_free = data.get("isGlutenFree", user.is_gluten_free)
+
+    db.session.commit()
+    return jsonify({"message": "User updated successfully."})
+
+@app.route("/users/<int:user_id>", methods=["DELETE"])
+def delete_user(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"message": "User not found."}), 404
+
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"message": "User deleted successfully."})
+
+##### Pantry Endpoints #####
+@app.route('/pantry/<int:uid>', methods=['GET'])
+def get_pantry(uid):
+    pantry_ingredients = PantryIngredient.query.filter_by(user_id=uid).all()
+    if not pantry_ingredients:
+        return jsonify({"message": "No pantry items found for this user."}), 404
+    
+    ingredients = [item.to_json() for item in pantry_ingredients]
+    return jsonify({"pantry": ingredients})
+
+@app.route('/pantry/<int:uid>', methods=['POST'])
+def add_pantry_ingredient(uid):
+    data = request.json
+    ingredient_id = data.get("ingredient_id")
+    quantity = data.get("quantity")
+    unit = data.get("unit")
+
+    if not ingredient_id or quantity is None or not unit:
+        return jsonify({"message": "Please fill out all required fields (ingredient_id, quantity, unit)."}), 400
+
+    new_item = PantryIngredient(user_id=uid, ingredient_id=ingredient_id, quantity=quantity, unit=unit)
     try:
         db.session.add(new_item)
         db.session.commit()
+        return jsonify({"message": "Ingredient added to pantry!"})
     except Exception as e:
-        return jsonify({'message': str(e)}), 400
+        db.session.rollback()
+        return jsonify({"message": str(e)}), 400
 
-    return jsonify({'message': 'Ingredient added to pantry!'})
-
-@app.route('/pantry', methods=['PATCH'])
+@app.route('/pantry/<int:uid>', methods=['PATCH'])
 def update_pantry_ingredient(uid):
-    # get pantry ingredient attributes
-    ingredientid = request.json.get('ingredient_id')
-    qty = request.json.get('quantity')
-    measurement_unit = request.json.get('unit')
+    data = request.json
+    ingredient_id = data.get("ingredient_id")
+    quantity = data.get("quantity")
+    unit = data.get("unit")
 
-    # test validity
-    if not ingredientid or not qty or not measurement_unit:
-        return (jsonify({'message': 'Please fill all required fields.'}), 400)
-    
-    # find pantry item
-    pantry_item = db.session.query(PantryIngredient).filter_by(
-        user_id=uid, ingredientid=ingredientid
-    ).first()
+    if not ingredient_id or quantity is None or not unit:
+        return jsonify({"message": "Please fill out all required fields (ingredient_id, quantity, unit)."}), 400
+
+    pantry_item = PantryIngredient.query.filter_by(user_id=uid, ingredient_id=ingredient_id).first()
     if not pantry_item:
-        return jsonify({'message': 'Ingredient not found in pantry'}), 404
-    
-    # update fields
-    pantry_item.quantity = qty
-    pantry_item.unit = measurement_unit
+        return jsonify({"message": "Ingredient not found in pantry."}), 404
+
+    pantry_item.quantity = quantity
+    pantry_item.unit = unit
     db.session.commit()
+    return jsonify({"message": "Pantry ingredient updated successfully."})
 
-    return jsonify({'message': 'Pantry ingredient updated successfully.'})
-
-@app.route('/pantry', methods=['DELETE'])
+@app.route('/pantry/<int:uid>', methods=['DELETE'])
 def remove_pantry_ingredient(uid):
-    # get ingredient id
-    ingredientid = request.json.get("ingredient_id")
+    data = request.json
+    ingredient_id = data.get("ingredient_id")
 
-    if not ingredientid:
-        return (jsonify({'message': "Please fill ingredient_id field."}), 400)
+    if not ingredient_id:
+        return jsonify({"message": "Please provide the ingredient_id."}), 400
 
-    db.session.query(PantryIngredient).filter(user_id=uid, ingredient_id=ingredientid).delete()
+    pantry_item = PantryIngredient.query.filter_by(user_id=uid, ingredient_id=ingredient_id).first()
+    if not pantry_item:
+        return jsonify({"message": "Ingredient not found in pantry."}), 404
+
+    db.session.delete(pantry_item)
     db.session.commit()
-    return jsonify({'message': "Ingredient removed from pantry."})
-
+    return jsonify({"message": "Ingredient removed from pantry."})
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    
-    app.run(debug = True)
+    #with app.app_context():
+        #db.create_all()
+    app.run(debug=True)
