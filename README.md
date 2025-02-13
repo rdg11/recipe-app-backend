@@ -8,6 +8,7 @@ python api
 - flask
 - Flask-SQLALCHEMY
 - flask-cors
+- flak-migrate
 
 When running for the first time to set up database (with migration folder)
 -  flask --app main db upgrade
