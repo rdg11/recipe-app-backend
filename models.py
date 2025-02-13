@@ -1,4 +1,6 @@
 from config import db
+import datetime
+
 
 # Users Table
 class User(db.Model):
@@ -146,3 +148,4 @@ class UserFavoriteRecipe(db.Model):
             "userId": self.user_id,
             "recipeId": self.recipe_id
         }
+
