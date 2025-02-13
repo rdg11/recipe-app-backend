@@ -1,6 +1,4 @@
-from flask_sqlalchemy import SQLAlchemy
-
-db = SQLAlchemy()
+from config import db
 
 # Users Table
 class User(db.Model):
@@ -85,9 +83,9 @@ class Recipe(db.Model):
             "name": self.name,
             "description": self.description,
             "steps": self.steps,
-            "isVegan": self.is_vegan,
-            "isGlutenFree": self.is_gluten_free,
-            "isNutFree": self.is_nut_free
+            "is_egan": self.is_vegan,
+            "is_gluten_free": self.is_gluten_free,
+            "is_nut_free": self.is_nut_free
         }
 
 # Recipe Ingredients Table (Many-to-Many between Recipes & Ingredients)
@@ -132,6 +130,7 @@ class Review(db.Model):
             "createdAt": self.created_at.strftime("%Y-%m-%d %H:%M:%S")
         }
 
+
 # User Favorite Recipes Table (Many-to-Many between Users & Recipes)
 class UserFavoriteRecipe(db.Model):
     __tablename__ = 'user_favorite_recipes'
@@ -139,8 +138,8 @@ class UserFavoriteRecipe(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), primary_key=True)
     recipe_id = db.Column(db.Integer, db.ForeignKey('recipe.recipe_id'), primary_key=True)
 
-    user = db.relationship('User', backref=db.backref('user_favorite_recipes', lazy=True))
-    recipe = db.relationship('Recipe', backref=db.backref('user_favorite_recipes', lazy=True))
+    user = db.relationship('User', backref=db.backref('user_favorite_recipes', lazy=True), overlaps="favorite_recipes,favorited_by")
+    recipe = db.relationship('Recipe', backref=db.backref('user_favorite_recipes', lazy=True), overlaps="favorite_recipes,favorited_by")
 
     def to_json(self):
         return {
