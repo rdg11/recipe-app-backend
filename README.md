@@ -13,7 +13,7 @@ To test connection:
 - flask --app main run
 - curl http://localhost:5000/users
 
-To add a user for testing:
+To add a user for testing with SQL (can also do a POST request from terminal):
 
 - mysql -u your_username -p
 - P@ssw0rd!
