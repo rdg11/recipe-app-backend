@@ -15,9 +15,9 @@ To test connection:
 
 To add a user for testing:
 
--mysql -u your_username -p
-P@ssw0rd!
--USE four_eleven;
+- mysql -u your_username -p
+- P@ssw0rd!
+- USE four_eleven;
 
 INSERT INTO users (first_name, last_name, email, is_vegetarian, is_nut_free, is_gluten_free)
 VALUES ('John', 'Doe', 'john.doe@example.com', TRUE, FALSE, TRUE);
