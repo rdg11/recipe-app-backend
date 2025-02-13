@@ -1,4 +1,6 @@
 from config import db
+import datetime
+
 
 # Users Table
 class User(db.Model):
@@ -83,7 +85,7 @@ class Recipe(db.Model):
             "name": self.name,
             "description": self.description,
             "steps": self.steps,
-            "is_egan": self.is_vegan,
+            "is_vegan": self.is_vegan,
             "is_gluten_free": self.is_gluten_free,
             "is_nut_free": self.is_nut_free
         }
@@ -146,3 +148,4 @@ class UserFavoriteRecipe(db.Model):
             "userId": self.user_id,
             "recipeId": self.recipe_id
         }
+
