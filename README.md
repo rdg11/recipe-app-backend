@@ -8,6 +8,11 @@ python api
 - flask
 - Flask-SQLALCHEMY
 - flask-cors
+- flak-migrate
+
+When running for the first time to set up database (with migration folder)
+-  flask --app main db upgrade
+-  OR  flask --app main db upgrade > output.txt 2>&1 (to display to file)
 
 To test connection:
 - flask --app main run
