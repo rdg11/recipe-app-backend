@@ -1,7 +1,5 @@
-# Environment variables
-.env
-.env.*
-!.env.example
+
+
 
 # Python virtual environment
 recipe-app-env/
