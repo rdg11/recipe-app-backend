@@ -44,11 +44,11 @@ def generate_recipes(uid):
 
 @app.route("/save_recipe/<int:user_id>", methods=["POST"])
 def save_recipe(uid):
-    # get data
+    # get recipe information
 
     # create recipe
 
-    # create ingredients
+    # create ingredients (if not already created in db)
 
     # create recipe ingredients
     return jsonify({"message": "Method not yet implemented."})
@@ -75,6 +75,7 @@ def create_account():
     first_name = data.get("firstName")
     last_name = data.get("lastName")
     email = data.get("email")
+#    password = data.get("hashedPassword")
     
     if not first_name or not last_name or not email:
         return jsonify({"message": "Please fill out all required fields (firstName, lastName, email)."}), 400
@@ -83,6 +84,7 @@ def create_account():
         first_name=first_name,
         last_name=last_name,
         email=email,
+#        password = password,
         is_vegetarian=data.get("isVegetarian", False),
         is_nut_free=data.get("isNutFree", False),
         is_gluten_free=data.get("isGlutenFree", False)
@@ -97,7 +99,25 @@ def create_account():
 
 @app.route("/login", methods=["POST"])
 def login():
-    return jsonify({"message": "Method not yet implemented."})
+    data = request.json
+    password = data.get("hashedPassword")
+    email = data.get("email")
+
+    # check valid values were passed
+    if not password or not email:
+        return jsonify({"message": "Please fill all fields (email, hashedPassword)"})
+
+    # find user profile record in database
+    user = User.query.filter(User.email == email).first()
+    if not user:
+        return jsonify({"message": "User email could not be found."})
+
+    # check if password is correct
+    if user.password == password:
+        return jsonify({"message": "User successfully authenticated.",
+                        "user_id": user.user_id})
+    else:
+        return jsonify({"message": "Password was incorrect."})
 
 
 
