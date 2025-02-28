@@ -2,8 +2,9 @@
 
 python api
 
-
 # Dependencies
+
+Install all dependencies with: pip install -r requirements.txt
 - SQLAlchemy
 - flask
 - Flask-SQLALCHEMY
