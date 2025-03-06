@@ -25,15 +25,15 @@ def update_pantry(uid):
     deleted_ingredients = data.get("deletedIngredients")
 
     for ingredient in added_ingredients:
-        if not add_pantry_ingredient(uid, ingredient_id=ingredient[0], quantity=ingredient[1], unit=ingredient[2]):
-            return jsonify({"message": "Failed to add ingredient with id=" + str(ingredient[0])})
+        if not add_pantry_ingredient(uid, ingredient_name=ingredient[0], quantity=ingredient[1], unit=ingredient[2]):
+            return jsonify({"message": "Failed to add ingredient with name=" + str(ingredient[0])})
         
     for ingredient in updated_ingredients:
-        if not update_pantry_ingredient(uid, ingredient_id=ingredient[0], quantity=ingredient[1], unit=ingredient[2]):
-            return jsonify({"message": "Failed to update ingredient with id=" + str(ingredient[0])})
+        if not update_pantry_ingredient(uid, ingredient_name=ingredient[0], quantity=ingredient[1], unit=ingredient[2]):
+            return jsonify({"message": "Failed to update ingredient with name=" + str(ingredient[0])})
         
     for ingredient in deleted_ingredients:
-        remove_pantry_ingredient(uid, ingredient_id=ingredient)
+        remove_pantry_ingredient(uid, ingredient_name=ingredient)
 
     return jsonify({"message": "Successfully updated pantry."})
 
@@ -75,7 +75,7 @@ def create_account():
     first_name = data.get("firstName")
     last_name = data.get("lastName")
     email = data.get("email")
-#    password = data.get("hashedPassword")
+    password = data.get("hashedPassword")
     
     if not first_name or not last_name or not email:
         return jsonify({"message": "Please fill out all required fields (firstName, lastName, email)."}), 400
@@ -84,7 +84,7 @@ def create_account():
         first_name=first_name,
         last_name=last_name,
         email=email,
-#        password = password,
+        password = password,
         is_vegetarian=data.get("isVegetarian", False),
         is_nut_free=data.get("isNutFree", False),
         is_gluten_free=data.get("isGlutenFree", False)
