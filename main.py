@@ -8,7 +8,7 @@ from flask_migrate import Migrate
 migrate = Migrate(app, db)
 
 ##### Pantry Page Endpoints #####
-@app.route("/get_pantry/<int:user_id>", methods=["GET"])
+@app.route("/get_pantry/<int:uid>", methods=["GET"])
 def get_pantry(uid):
     pantry_ingredients = PantryIngredient.query.filter_by(user_id=uid).all()
     if not pantry_ingredients:
@@ -17,7 +17,7 @@ def get_pantry(uid):
     ingredients = [item.to_json() for item in pantry_ingredients]
     return jsonify({"pantry": ingredients})
 
-@app.route("/update_pantry/<int:user_id>", methods=["PATCH"])
+@app.route("/update_pantry/<int:uid>", methods=["PATCH"])
 def update_pantry(uid):
     data = request.json
     added_ingredients = data.get("addedIngredients")
@@ -38,11 +38,11 @@ def update_pantry(uid):
     return jsonify({"message": "Successfully updated pantry."})
 
 ##### Recipe Search Page Endpoints #####
-@app.route("/generate_recipes/<int:user_id>", methods=["POST"])
+@app.route("/generate_recipes/<int:uid>", methods=["POST"])
 def generate_recipes(uid):
     return jsonify({"message": "Method not yet implemented."})
 
-@app.route("/save_recipe/<int:user_id>", methods=["POST"])
+@app.route("/save_recipe/<int:uid>", methods=["POST"])
 def save_recipe(uid):
     # get recipe information
 
@@ -54,7 +54,7 @@ def save_recipe(uid):
     return jsonify({"message": "Method not yet implemented."})
 
 ##### Account Page Endpoints #####
-@app.route("/update_preferences/<int:user_id>", methods=["PATCH"])
+@app.route("/update_preferences/<int:uid>", methods=["PATCH"])
 def update_preferences(uid):
     user = User.query.get(uid)
     if not user:
@@ -68,17 +68,42 @@ def update_preferences(uid):
     db.session.commit()
     return jsonify({"message": "User updated successfully."})
 
+@app.route("/delete_user/<int:uid>", methods=["POST"])
+def delete_user(uid):
+    user = User.query.get(uid)
+
+    if user is None:
+        return jsonify({"message": "A user could not be found with the given user_id"})
+    
+    # delete the user's pantry ingredients
+    ingredients = PantryIngredient.query.filter_by(user_id=uid)
+    for item in ingredients:
+        db.session.delete(item)
+
+    # delete the recipes saved by the user (?)
+    # recipes = Recipe.query.filter_by(user_id=uid)
+    # for item in recipes:
+    #    db.session.delete(item)
+
+    # delete the user
+    db.session.delete(user)
+
+    db.session.commit()
+
+    return jsonify({"message": "User successfully deleted."})
+
+
 ##### Signup/Login Page #####
-@app.route("/create_account", methods=["POST"])
-def create_account():
+@app.route("/create_user", methods=["POST"])
+def create_user():
     data = request.json
     first_name = data.get("firstName")
     last_name = data.get("lastName")
     email = data.get("email")
     password = data.get("hashedPassword")
     
-    if not first_name or not last_name or not email:
-        return jsonify({"message": "Please fill out all required fields (firstName, lastName, email)."}), 400
+    if not first_name or not last_name or not email or not password:
+        return jsonify({"message": "Please fill out all required fields (firstName, lastName, password, email)."}), 400
     
     new_user = User(
         first_name=first_name,
