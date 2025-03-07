@@ -157,56 +157,56 @@ def delete_user(uid):
     return jsonify({"message": "User successfully deleted."})
 
 
-##### Signup/Login Page #####
-@app.route("/create_user", methods=["POST"])
-def create_user():
-    data = request.json
-    first_name = data.get("firstName")
-    last_name = data.get("lastName")
-    email = data.get("email")
-    password = data.get("hashedPassword")
+# ##### Signup/Login Page #####
+# @app.route("/create_user", methods=["POST"])
+# def create_user():
+#     data = request.json
+#     first_name = data.get("firstName")
+#     last_name = data.get("lastName")
+#     email = data.get("email")
+#     password = data.get("hashedPassword")
     
-    if not first_name or not last_name or not email or not password:
-        return jsonify({"message": "Please fill out all required fields (firstName, lastName, password, email)."}), 400
+#     if not first_name or not last_name or not email or not password:
+#         return jsonify({"message": "Please fill out all required fields (firstName, lastName, password, email)."}), 400
     
-    new_user = User(
-        first_name=first_name,
-        last_name=last_name,
-        email=email,
-        password = password,
-        is_vegetarian=data.get("isVegetarian", False),
-        is_nut_free=data.get("isNutFree", False),
-        is_gluten_free=data.get("isGlutenFree", False)
-    )
-    try:
-        db.session.add(new_user)
-        db.session.commit()
-        return jsonify({"message": "User created successfully!"})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"message": str(e)}), 400
+#     new_user = User(
+#         first_name=first_name,
+#         last_name=last_name,
+#         email=email,
+#         password = password,
+#         is_vegetarian=data.get("isVegetarian", False),
+#         is_nut_free=data.get("isNutFree", False),
+#         is_gluten_free=data.get("isGlutenFree", False)
+#     )
+#     try:
+#         db.session.add(new_user)
+#         db.session.commit()
+#         return jsonify({"message": "User created successfully!"})
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({"message": str(e)}), 400
 
-@app.route("/login", methods=["POST"])
-def login():
-    data = request.json
-    password = data.get("hashedPassword")
-    email = data.get("email")
+# @app.route("/login", methods=["POST"])
+# def login():
+#     data = request.json
+#     password = data.get("hashedPassword")
+#     email = data.get("email")
 
-    # check valid values were passed
-    if not password or not email:
-        return jsonify({"message": "Please fill all fields (email, hashedPassword)"})
+#     # check valid values were passed
+#     if not password or not email:
+#         return jsonify({"message": "Please fill all fields (email, hashedPassword)"})
 
-    # find user profile record in database
-    user = User.query.filter(User.email == email).first()
-    if not user:
-        return jsonify({"message": "User email could not be found."})
+#     # find user profile record in database
+#     user = User.query.filter(User.email == email).first()
+#     if not user:
+#         return jsonify({"message": "User email could not be found."})
 
-    # check if password is correct
-    if user.password == password:
-        return jsonify({"message": "User successfully authenticated.",
-                        "user_id": user.user_id})
-    else:
-        return jsonify({"message": "Password was incorrect."})
+#     # check if password is correct
+#     if user.password == password:
+#         return jsonify({"message": "User successfully authenticated.",
+#                         "user_id": user.user_id})
+#     else:
+#         return jsonify({"message": "Password was incorrect."})
 
 
 
