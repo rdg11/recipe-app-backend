@@ -4,8 +4,72 @@ from flask import request, jsonify
 from config import app, db
 from models import User, Ingredient, PantryIngredient, Recipe, RecipeIngredient, Review, UserFavoriteRecipe
 from flask_migrate import Migrate
+import os
+from flask_bcrypt import Bcrypt
+import mysql.connector
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
+
+db = mysql.connector.connect(
+    host= os.environ.get("DB_HOST"),
+    user= os.environ.get("DB_USER"),
+    password= os.environ.get("DB_PASS"),
+    database= os.environ.get("DB_NAME")
+) 
+cursor = db.cursor()
 
 migrate = Migrate(app, db)
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_Secret")
+bcrypt = Bcrypt(app)
+jwt = JWTManager(app)
+
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.json
+    fName = data.get("first_name")
+    lName = data.get("last_name")
+    email = data.get("email")
+    password = data.get("password")
+
+    hashed_password = bcrypt.generate_password_hash(password).decode("utf-8")
+    
+    cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+    existing_user = cursor.fetchone()
+    if existing_user:
+        return jsonify({"message": "User already exists"}), 400
+
+    cursor.execute("INSERT INTO users (first_name, last_name, email, password) VALUES (%s, %s, %s, %s)", (fName, lName, email, hashed_password))
+    db.commit()
+
+    return jsonify({"message": "User registered successfully"}), 201
+
+
+# Create a route to authenticate your users and return JWTs. The
+# create_access_token() function is used to actually generate the JWT.
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
+    
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT email, password FROM users WHERE email = %s", (email,))
+    user = cursor.fetchone()
+    
+    if not user or not bcrypt.check_password_hash(user["password"], password):
+        return jsonify({"message": "Invalid credentials"}), 401
+    
+    access_token = create_access_token(identity={"email": user["email"]})
+    return jsonify({"access_token": access_token})
+
+# Protected Route
+@app.route("/protected", methods=["GET"])
+@jwt_required()
+def protected():
+    current_user = get_jwt_identity()
+    return jsonify({"message": f"Hello {current_user['email']}, you accessed a protected route!"})
 
 ##### User (Profile) Endpoints #####
 @app.route("/users", methods=["GET"])

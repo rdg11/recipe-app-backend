@@ -10,6 +10,7 @@ class User(db.Model):
     first_name = db.Column(db.String(255))
     last_name = db.Column(db.String(255))
     email = db.Column(db.String(255))
+    password = db.Column(db.String(255))
     is_vegetarian = db.Column(db.Boolean)
     is_nut_free = db.Column(db.Boolean)
     is_gluten_free = db.Column(db.Boolean)
@@ -22,6 +23,7 @@ class User(db.Model):
             "firstname": self.first_name,
             "lastname": self.last_name,
             "email": self.email,
+            "password": self.password,
             "isVegetarian": self.is_vegetarian,
             "isNutFree": self.is_nut_free,
             "isGlutenFree": self.is_gluten_free,
@@ -148,4 +150,3 @@ class UserFavoriteRecipe(db.Model):
             "userId": self.user_id,
             "recipeId": self.recipe_id
         }
-
