@@ -5,11 +5,17 @@ python api
 # Dependencies
 
 Install all dependencies with: pip install -r requirements.txt
+- alembic
+- Flask
+- flask_bcrypt
+- flask_cors
+- flask_jwt_extended
+- Flask_Migrate
+- flask_sqlalchemy
+- mysql_connector_python
+- PyMySQL
+- python-dotenv
 - SQLAlchemy
-- flask
-- Flask-SQLALCHEMY
-- flask-cors
-- flak-migrate
 
 When running for the first time to set up database (with migration folder)
 -  flask --app main db upgrade
