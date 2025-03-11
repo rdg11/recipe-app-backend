@@ -65,14 +65,15 @@ def login():
     return jsonify({"access_token": access_token})
 
 # Protected Route
-@app.route("/protected", methods=["GET"])
-@jwt_required()
-def protected():
-    current_user = get_jwt_identity()
-    return jsonify({"message": f"Hello {current_user['email']}, you accessed a protected route!"})
+# @app.route("/protected", methods=["GET"])
+# @jwt_required()
+# def protected():
+#     current_user = get_jwt_identity()
+#     return jsonify({"message": f"Hello {current_user['email']}, you accessed a protected route!"})
 
 ##### Pantry Page Endpoints #####
 @app.route("/get_pantry/<int:uid>", methods=["GET"])
+@jwt_required()
 def get_pantry(uid):
     pantry_ingredients = PantryIngredient.query.filter_by(user_id=uid).all()
     if not pantry_ingredients:
@@ -82,6 +83,7 @@ def get_pantry(uid):
     return jsonify({"pantry": ingredients})
 
 @app.route("/update_pantry/<int:uid>", methods=["PATCH"])
+@jwt_required()
 def update_pantry(uid):
     data = request.json
     added_ingredients = data.get("addedIngredients")
@@ -103,10 +105,12 @@ def update_pantry(uid):
 
 ##### Recipe Search Page Endpoints #####
 @app.route("/generate_recipes/<int:uid>", methods=["POST"])
+@jwt_required()
 def generate_recipes(uid):
     return jsonify({"message": "Method not yet implemented."})
 
 @app.route("/save_recipe/<int:uid>", methods=["POST"])
+@jwt_required()
 def save_recipe(uid):
     # get recipe information
 
@@ -119,6 +123,7 @@ def save_recipe(uid):
 
 ##### Account Page Endpoints #####
 @app.route("/update_preferences/<int:uid>", methods=["PATCH"])
+@jwt_required()
 def update_preferences(uid):
     user = User.query.get(uid)
     if not user:
@@ -133,6 +138,7 @@ def update_preferences(uid):
     return jsonify({"message": "User updated successfully."})
 
 @app.route("/delete_user/<int:uid>", methods=["POST"])
+@jwt_required()
 def delete_user(uid):
     user = User.query.get(uid)
 
