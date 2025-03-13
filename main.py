@@ -11,6 +11,7 @@ from flask_jwt_extended import create_access_token
 from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import jwt_required
 from flask_jwt_extended import JWTManager
+from flask_jwt_extended import unset_jwt_cookies
 
 db = mysql.connector.connect(
     host= os.environ.get("DB_HOST"),
@@ -63,6 +64,13 @@ def login():
     
     access_token = create_access_token(identity={"email": user["email"]})
     return jsonify({"access_token": access_token})
+
+@app.route("/logout", methods=["POST"])
+@jwt_required()
+def logout():
+    response = jsonify({"message": "Logout successful"})
+    unset_jwt_cookies(response)  # Clears the JWT from cookies
+    return response, 200
 
 # Protected Route
 # @app.route("/protected", methods=["GET"])
