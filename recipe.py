@@ -3,7 +3,7 @@ import json
 from openai import OpenAI
 import mysql.connector
 
-def generate_recipes_from_ingredients(user_query,ingredients_list):
+def generate_recipes_from_ingredients(user_query,ingredients):
     """
     Connect to OpenAI API and generate recipe suggestions based on the provided ingredients.
     Args:
@@ -14,11 +14,11 @@ def generate_recipes_from_ingredients(user_query,ingredients_list):
     # Initialize the OpenAI client
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     # Format the ingredients as a comma-separated string
-    ingredients_str = ", ".join(ingredients_list)
+    #ingredients_str = ", ".join(ingredients_list)
     # Create the prompt
     prompt = f"""
     I have the following ingredients:
-    {ingredients_str}
+    {ingredients}
     {user_query}
     Please provide three recipes:
     1. The name of each recipe
@@ -55,8 +55,13 @@ def getListOfIngredients(username):
             database=os.environ.get("DB_NAME")
         )
         cursor = db.cursor()
-        query = "SELECT ingredient FROM user_ingredients WHERE username = %s"
-        cursor.execute(query, (username,))
+        query = """select i.name from pantry_ingredient p 
+        inner join users u on u.user_id	= p.user_id
+        inner join ingredient i on p.ingredient_id = i.ingredient_id
+        where u.email = %s
+"""
+        parameters = (username, )
+        cursor.execute(query, parameters)
         rows = cursor.fetchall()
         ingredients = [row[0] for row in rows]
         return ingredients

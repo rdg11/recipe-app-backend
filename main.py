@@ -15,6 +15,7 @@ from flask_jwt_extended import unset_jwt_cookies
 from recipe import generate_recipes_from_ingredients
 from recipe import getListOfIngredients
 
+
 db = mysql.connector.connect(
     host= os.environ.get("DB_HOST"),
     user= os.environ.get("DB_USER"),
@@ -58,13 +59,12 @@ def login():
     password = data.get("password")
     
     cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT email, password FROM users WHERE email = %s", (email,))
+    cursor.execute("SELECT email, password, user_id FROM users WHERE email = %s", (email,))
     user = cursor.fetchone()
     
     if not user or not bcrypt.check_password_hash(user["password"], password):
         return jsonify({"message": "Invalid credentials"}), 401
     
-    # access_token = create_access_token(identity={"email": user["email"]})
     access_token = create_access_token(identity=user["email"])
     return jsonify({"access_token": access_token})
 
@@ -75,12 +75,6 @@ def logout():
     unset_jwt_cookies(response)  # Clears the JWT from cookies
     return response, 200
 
-# Protected Route
-# @app.route("/protected", methods=["GET"])
-# @jwt_required()
-# def protected():
-#     current_user = get_jwt_identity()
-#     return jsonify({"message": f"Hello {current_user['email']}, you accessed a protected route!"})
 
 ##### Pantry Page Endpoints #####
 @app.route("/get_pantry/<int:uid>", methods=["GET"])
@@ -114,11 +108,6 @@ def update_pantry(uid):
 
     return jsonify({"message": "Successfully updated pantry."})
 
-##### Recipe Search Page Endpoints #####
-@app.route("/generate_recipes/<int:uid>", methods=["POST"])
-@jwt_required()
-def generate_recipes(uid):
-    return jsonify({"message": "Method not yet implemented."})
 
 @app.route("/save_recipe/<int:uid>", methods=["POST"])
 @jwt_required()
@@ -179,64 +168,18 @@ def generate():
     data = request.json
     user_query = data.get("user_query")
     current_user_email = get_jwt_identity()
+    current_user = User.query.filter_by(email = current_user_email).first()
     # get the list of ingreidents
-    ingredients = getListOfIngredients(current_user_email)
+    # ingredients = getListOfIngredients(current_user_email)
+    pantry_ingredients = PantryIngredient.query.filter_by(user_id=current_user.user_id).all()
+    if not pantry_ingredients:
+        ingredients = ""
+    else:
+        ingredients = ",".join([item.name for item in pantry_ingredients])
+    print(ingredients)
     # generate 3 recipes using the ingredients and user query
     result = generate_recipes_from_ingredients(user_query,ingredients)
     return result
-
-
-# ##### Signup/Login Page #####
-# @app.route("/create_user", methods=["POST"])
-# def create_user():
-#     data = request.json
-#     first_name = data.get("firstName")
-#     last_name = data.get("lastName")
-#     email = data.get("email")
-#     password = data.get("hashedPassword")
-    
-#     if not first_name or not last_name or not email or not password:
-#         return jsonify({"message": "Please fill out all required fields (firstName, lastName, password, email)."}), 400
-    
-#     new_user = User(
-#         first_name=first_name,
-#         last_name=last_name,
-#         email=email,
-#         password = password,
-#         is_vegetarian=data.get("isVegetarian", False),
-#         is_nut_free=data.get("isNutFree", False),
-#         is_gluten_free=data.get("isGlutenFree", False)
-#     )
-#     try:
-#         db.session.add(new_user)
-#         db.session.commit()
-#         return jsonify({"message": "User created successfully!"})
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({"message": str(e)}), 400
-
-# @app.route("/login", methods=["POST"])
-# def login():
-#     data = request.json
-#     password = data.get("hashedPassword")
-#     email = data.get("email")
-
-#     # check valid values were passed
-#     if not password or not email:
-#         return jsonify({"message": "Please fill all fields (email, hashedPassword)"})
-
-#     # find user profile record in database
-#     user = User.query.filter(User.email == email).first()
-#     if not user:
-#         return jsonify({"message": "User email could not be found."})
-
-#     # check if password is correct
-#     if user.password == password:
-#         return jsonify({"message": "User successfully authenticated.",
-#                         "user_id": user.user_id})
-#     else:
-#         return jsonify({"message": "Password was incorrect."})
-
 
 
 ##### Additional Helper Functions #####
@@ -278,27 +221,6 @@ def remove_pantry_ingredient(uid, ingredient_id):
     db.session.delete(pantry_item)
     db.session.commit()
     return True
-
-# def get_users():
-#     users = User.query.all()
-#     json_users = [user.to_json() for user in users]
-#     return jsonify({"users": json_users})
-#
-# def delete_user(user_id):
-#     user = User.query.get(user_id)
-#     if not user:
-#         return jsonify({"message": "User not found."}), 404
-#
-#     db.session.delete(user)
-#     db.session.commit()
-#     return jsonify({"message": "User deleted successfully."})
-#
-# def get_recipes():
-#     recipes = Recipe.query.all()
-#     return jsonify([recipe.to_json() for recipe in recipes])
-
-
-
 
 
 if __name__ == "__main__":

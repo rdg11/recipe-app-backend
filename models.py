@@ -15,7 +15,18 @@ class User(db.Model):
     is_nut_free = db.Column(db.Boolean)
     is_gluten_free = db.Column(db.Boolean)
 
-    favorite_recipes = db.relationship('Recipe', secondary='user_favorite_recipes', backref='favorited_by')
+    user_favorite_recipes = db.relationship(
+        'UserFavoriteRecipe',
+        back_populates='user',
+        overlaps="favorite_recipes"
+    )
+
+    favorite_recipes = db.relationship(
+        'Recipe',
+        secondary='user_favorite_recipes',
+        back_populates='favorited_by',
+        overlaps="user,user_favorite_recipes"
+    )
 
     def to_json(self):
         return {
@@ -80,6 +91,19 @@ class Recipe(db.Model):
     is_vegetarian = db.Column(db.Boolean)
     is_gluten_free = db.Column(db.Boolean)
     is_nut_free = db.Column(db.Boolean)
+    
+    user_favorite_recipes = db.relationship(
+        'UserFavoriteRecipe',
+        back_populates='recipe',
+        overlaps="favorite_recipes"
+    )
+
+    favorited_by = db.relationship(
+        'User',
+        secondary='user_favorite_recipes',
+        back_populates='favorite_recipes',
+        overlaps="user,user_favorite_recipes"
+    )
 
     def to_json(self):
         return {
@@ -142,8 +166,9 @@ class UserFavoriteRecipe(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), primary_key=True)
     recipe_id = db.Column(db.Integer, db.ForeignKey('recipe.recipe_id'), primary_key=True)
 
-    user = db.relationship('User', backref=db.backref('user_favorite_recipes', lazy=True), overlaps="favorite_recipes,favorited_by")
-    recipe = db.relationship('Recipe', backref=db.backref('user_favorite_recipes', lazy=True), overlaps="favorite_recipes,favorited_by")
+    user = db.relationship("User", back_populates="user_favorite_recipes", overlaps="favorite_recipes")
+    recipe = db.relationship("Recipe", back_populates="user_favorite_recipes", overlaps="favorited_by,favorite_recipes")
+
 
     def to_json(self):
         return {
