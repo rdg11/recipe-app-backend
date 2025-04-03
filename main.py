@@ -12,6 +12,8 @@ from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import jwt_required
 from flask_jwt_extended import JWTManager
 from flask_jwt_extended import unset_jwt_cookies
+from recipe import generate_recipes_from_ingredients
+from recipe import getListOfIngredients
 
 db = mysql.connector.connect(
     host= os.environ.get("DB_HOST"),
@@ -62,7 +64,8 @@ def login():
     if not user or not bcrypt.check_password_hash(user["password"], password):
         return jsonify({"message": "Invalid credentials"}), 401
     
-    access_token = create_access_token(identity={"email": user["email"]})
+    # access_token = create_access_token(identity={"email": user["email"]})
+    access_token = create_access_token(identity=user["email"])
     return jsonify({"access_token": access_token})
 
 @app.route("/logout", methods=["POST"])
@@ -169,6 +172,18 @@ def delete_user(uid):
     db.session.commit()
 
     return jsonify({"message": "User successfully deleted."})
+
+@app.route("/recipe/generate", methods=["POST"])
+@jwt_required()
+def generate():
+    data = request.json
+    user_query = data.get("user_query")
+    current_user_email = get_jwt_identity()
+    # get the list of ingreidents
+    ingredients = getListOfIngredients(current_user_email)
+    # generate 3 recipes using the ingredients and user query
+    result = generate_recipes_from_ingredients(user_query,ingredients)
+    return result
 
 
 # ##### Signup/Login Page #####
