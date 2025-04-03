@@ -1,0 +1,51 @@
+# /register POST
+{
+    "first_name": "",
+    "last_name": "",
+    "email": "",
+    "password": ""
+}
+
+# /login POST
+{
+    "email": "",
+    "password": ""
+}
+
+# /logout POST
+{}
+
+# /get_pantry/<int:uid> GET
+{}
+
+# /update_pantry/<int:uid> PATCH
+{
+    "addedIngredients": [
+        ["ingredient_name", quantity, "unit"],
+        ["ingredient_name", quantity, "unit"]
+    ],
+    "updatedIngredients": [
+        ["ingredient_name", quantity, "unit"],
+        ["ingredient_name", quantity, "unit"]
+    ],
+    "deletedIngredients": [
+        "ingredient_name",
+        "ingredient_name",
+    ]
+}
+
+# /generate_recipes/<int:uid> POST
+{not yet implemented}
+
+# /save_recipe/<int:uid> POST
+{not yet implemented}
+
+# /update_preferences/<int:uid> PATCH
+{
+    "isVegetarian": 0,
+    "isNutFree": 0,
+    "isGlutenFree": 0
+}
+
+# /delete_user/<int:uid> POST
+{}
