@@ -14,6 +14,7 @@ from flask_jwt_extended import JWTManager
 from flask_jwt_extended import unset_jwt_cookies
 from recipe import generate_recipes_from_ingredients
 from recipe import getListOfIngredients
+from flask_cors import CORS
 
 
 db = mysql.connector.connect(
@@ -112,14 +113,61 @@ def update_pantry(uid):
 @app.route("/save_recipe/<int:uid>", methods=["POST"])
 @jwt_required()
 def save_recipe(uid):
-    # get recipe information
-
-    # create recipe
-
-    # create ingredients (if not already created in db)
-
-    # create recipe ingredients
-    return jsonify({"message": "Method not yet implemented."})
+    data = request.json
+    recipe_data = data.get("recipe")
+    
+    if not recipe_data:
+        return jsonify({"message": "No recipe data provided"}), 400
+    
+    # Create the recipe
+    new_recipe = Recipe(
+        name=recipe_data.get("recipeName"),
+        description=recipe_data.get("description"),
+        steps=json.dumps(recipe_data.get("steps")),
+        is_vegetarian=recipe_data.get("allergyFlags", {}).get("containsVegetarian", False),
+        is_gluten_free=not recipe_data.get("allergyFlags", {}).get("containsGluten", False),
+        is_nut_free=not recipe_data.get("allergyFlags", {}).get("containsNuts", False)
+    )
+    
+    db.session.add(new_recipe)
+    db.session.commit()
+    
+    # Add ingredients
+    ingredients_list = recipe_data.get("ingredients", "").split(", ")
+    for ingredient_name in ingredients_list:
+        # Check if ingredient exists
+        ingredient = Ingredient.query.filter_by(name=ingredient_name).first()
+        if not ingredient:
+            # Create new ingredient
+            ingredient = Ingredient(
+                name=ingredient_name,
+                contains_nuts=False,  # Default values, can be updated later
+                contains_gluten=False,
+                contains_meat=False
+            )
+            db.session.add(ingredient)
+            db.session.commit()
+        
+        # Create recipe ingredient relationship
+        recipe_ingredient = RecipeIngredient(
+            recipe_id=new_recipe.recipe_id,
+            ingredient_id=ingredient.ingredient_id,
+            quantity=1.0,  # Default values, can be updated later
+            unit="unit"
+        )
+        db.session.add(recipe_ingredient)
+    
+    db.session.commit()
+    
+    # Add to user favorites
+    user_favorite = UserFavoriteRecipe(
+        user_id=uid,
+        recipe_id=new_recipe.recipe_id
+    )
+    db.session.add(user_favorite)
+    db.session.commit()
+    
+    return jsonify({"message": "Recipe saved successfully", "recipe_id": new_recipe.recipe_id}), 201
 
 ##### Account Page Endpoints #####
 @app.route("/update_preferences/<int:uid>", methods=["PATCH"])
@@ -168,18 +216,41 @@ def generate():
     data = request.json
     user_query = data.get("user_query")
     current_user_email = get_jwt_identity()
-    current_user = User.query.filter_by(email = current_user_email).first()
-    # get the list of ingreidents
-    # ingredients = getListOfIngredients(current_user_email)
+    current_user = User.query.filter_by(email=current_user_email).first()
+    
+    # Get the list of ingredients
     pantry_ingredients = PantryIngredient.query.filter_by(user_id=current_user.user_id).all()
-    if not pantry_ingredients:
+    
+    # Join pantry ingredients with their names from the ingredient table
+    ingredients_list = []
+    for item in pantry_ingredients:
+        ingredient = Ingredient.query.get(item.ingredient_id)
+        if ingredient:
+            ingredients_list.append(f"{ingredient.name} ({item.quantity} {item.unit})")
+    
+    # If no ingredients, use empty string
+    if not ingredients_list:
         ingredients = ""
     else:
-        ingredients = ",".join([item.name for item in pantry_ingredients])
-    print(ingredients)
-    # generate 3 recipes using the ingredients and user query
-    result = generate_recipes_from_ingredients(user_query,ingredients)
-    return result
+        ingredients = ", ".join(ingredients_list)
+    
+    print(f"User query: {user_query}")
+    print(f"Ingredients: {ingredients}")
+    
+    # Generate recipes using the ingredients and user query
+    result = generate_recipes_from_ingredients(user_query, ingredients)
+    
+    # Check if result has the expected structure
+    if 'recipes' not in result:
+        # If OpenAI didn't return a 'recipes' key, format it properly
+        if isinstance(result, dict) and any(key in result for key in ['error', 'raw_content']):
+            # Handle error case
+            return jsonify({"recipes": [], "error": result.get("error", "Unknown error occurred")})
+        else:
+            # Try to adapt the response to the expected format
+            return jsonify(result)
+    
+    return jsonify(result)
 
 
 ##### Additional Helper Functions #####
