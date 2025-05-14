@@ -33,7 +33,7 @@ def generate_recipes_from_ingredients(user_query, ingredients):
     
     # Make the API call
     response = client.chat.completions.create(
-        model="gpt-4-turbo",
+        model="gpt-4.1-nano",
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": "You are a helpful cooking assistant. You suggest recipes based on available ingredients and return your response in JSON format. Assume salt and pepper are generally available. Always include a 'recipes' key in your response containing an array of recipe objects."},
