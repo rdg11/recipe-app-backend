@@ -25,6 +25,16 @@ db = mysql.connector.connect(
 ) 
 cursor = db.cursor()
 
+def get_db_connection():
+    """Create a new database connection for each request"""
+    return mysql.connector.connect(
+        host=os.environ.get("DB_HOST"),
+        user=os.environ.get("DB_USER"),
+        password=os.environ.get("DB_PASS"),
+        database=os.environ.get("DB_NAME"),
+        autocommit=False  # We'll handle commits explicitly
+    )
+
 migrate = Migrate(app, db)
 app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_Secret")
 bcrypt = Bcrypt(app)
@@ -59,15 +69,20 @@ def login():
     email = data.get("email")
     password = data.get("password")
     
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT email, password, user_id FROM users WHERE email = %s", (email,))
-    user = cursor.fetchone()
-    
-    if not user or not bcrypt.check_password_hash(user["password"], password):
-        return jsonify({"message": "Invalid credentials"}), 401
-    
-    access_token = create_access_token(identity=user["email"])
-    return jsonify({"access_token": access_token})
+    db = get_db_connection()
+    try:
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("SELECT email, password, user_id FROM users WHERE email = %s", (email,))
+        user = cursor.fetchone()
+        cursor.close()
+        
+        if not user or not bcrypt.check_password_hash(user["password"], password):
+            return jsonify({"message": "Invalid credentials"}), 401
+        
+        access_token = create_access_token(identity=user["email"])
+        return jsonify({"access_token": access_token})
+    finally:
+        db.close()
 
 @app.route("/logout", methods=["POST"])
 @jwt_required()
@@ -81,33 +96,226 @@ def logout():
 @app.route("/get_pantry/<int:uid>", methods=["GET"])
 @jwt_required()
 def get_pantry(uid):
-    pantry_ingredients = PantryIngredient.query.filter_by(user_id=uid).all()
-    if not pantry_ingredients:
-        return jsonify({"message": "No pantry items found for this user."}), 404
-    
-    ingredients = [item.to_json() for item in pantry_ingredients]
-    return jsonify({"pantry": ingredients})
+    try:
+        # Create a new connection
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Query to join pantry_ingredient with ingredient to get names
+        query = """
+        SELECT p.ingredient_id, p.user_id, p.quantity, p.unit, i.name
+        FROM pantry_ingredient p
+        JOIN ingredient i ON p.ingredient_id = i.ingredient_id
+        WHERE p.user_id = %s
+        """
+        
+        cursor.execute(query, (uid,))
+        pantry_items = cursor.fetchall()
+        
+        # Close resources properly
+        cursor.close()
+        conn.close()
+        
+        if not pantry_items:
+            return jsonify({"message": "No pantry items found for this user.", "pantry": []}), 200
+        
+        result = []
+        for item in pantry_items:
+            result.append({
+                "ingredientId": item["ingredient_id"],
+                "userId": item["user_id"],
+                "quantity": float(item["quantity"]) if item["quantity"] is not None else None,
+                "unit": item["unit"],
+                "ingredient": {"name": item["name"]}
+            })
+        
+        return jsonify({"pantry": result})
+        
+    except Exception as e:
+        print(f"Error in get_pantry: {str(e)}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+# Update for the backend - in main.py
+# Replace update_pantry function with this improved version
 
 @app.route("/update_pantry/<int:uid>", methods=["PATCH"])
 @jwt_required()
 def update_pantry(uid):
-    data = request.json
-    added_ingredients = data.get("addedIngredients")
-    updated_ingredients = data.get("updatedIngredients")
-    deleted_ingredients = data.get("deletedIngredients")
-
-    for ingredient in added_ingredients:
-        if not add_pantry_ingredient(uid, ingredient_name=ingredient[0], quantity=ingredient[1], unit=ingredient[2]):
-            return jsonify({"message": "Failed to add ingredient with name=" + str(ingredient[0])})
+    try:
+        data = request.json
+        print(f"Received update_pantry request with data: {data}")
         
-    for ingredient in updated_ingredients:
-        if not update_pantry_ingredient(uid, ingredient_name=ingredient[0], quantity=ingredient[1], unit=ingredient[2]):
-            return jsonify({"message": "Failed to update ingredient with name=" + str(ingredient[0])})
-        
-    for ingredient in deleted_ingredients:
-        remove_pantry_ingredient(uid, ingredient_name=ingredient)
+        added_ingredients = data.get("addedIngredients", [])
+        updated_ingredients = data.get("updatedIngredients", [])
+        deleted_ingredients = data.get("deletedIngredients", [])
 
-    return jsonify({"message": "Successfully updated pantry."})
+        print(f"Processing {len(added_ingredients)} added, {len(updated_ingredients)} updated, and {len(deleted_ingredients)} deleted ingredients")
+        
+        # Process added ingredients
+        for ingredient in added_ingredients:
+            try:
+                ingredient_name = ingredient[0]
+                quantity = ingredient[1] if ingredient[1] != "" else None
+                unit = ingredient[2] if ingredient[2] != "" else ""
+                
+                print(f"Adding ingredient: {ingredient_name}, {quantity}, {unit}")
+                
+                # Get a fresh connection for this operation
+                conn = get_db_connection()
+                cursor = conn.cursor(dictionary=True)
+                
+                try:
+                    # Check if ingredient already exists in database
+                    cursor.execute("SELECT ingredient_id FROM ingredient WHERE name = %s", (ingredient_name,))
+                    ingredient_obj = cursor.fetchone()
+                    
+                    if not ingredient_obj:
+                        # Create new ingredient
+                        cursor.execute(
+                            "INSERT INTO ingredient (name, contains_nuts, contains_gluten, contains_meat) VALUES (%s, %s, %s, %s)",
+                            (ingredient_name, False, False, False)
+                        )
+                        conn.commit()
+                        ingredient_id = cursor.lastrowid
+                        print(f"Created new ingredient with ID: {ingredient_id}")
+                    else:
+                        ingredient_id = ingredient_obj["ingredient_id"]
+                    
+                    # Check if ingredient already exists in pantry - use a parameterized query
+                    cursor.execute(
+                        "SELECT * FROM pantry_ingredient WHERE user_id = %s AND ingredient_id = %s",
+                        (uid, ingredient_id)
+                    )
+                    existing = cursor.fetchone()
+                    
+                    if existing:
+                        # Update existing entry
+                        cursor.execute(
+                            "UPDATE pantry_ingredient SET quantity = %s, unit = %s WHERE user_id = %s AND ingredient_id = %s",
+                            (quantity, unit, uid, ingredient_id)
+                        )
+                        print(f"Updated existing pantry item for {ingredient_name}")
+                    else:
+                        # Add new entry
+                        cursor.execute(
+                            "INSERT INTO pantry_ingredient (user_id, ingredient_id, quantity, unit) VALUES (%s, %s, %s, %s)",
+                            (uid, ingredient_id, quantity, unit)
+                        )
+                        print(f"Added new pantry item for {ingredient_name}")
+                    
+                    conn.commit()
+                    
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Error processing ingredient {ingredient_name}: {str(e)}")
+                    # Continue to next ingredient instead of failing the entire request
+                finally:
+                    cursor.close()
+                    conn.close()
+                    
+            except Exception as e:
+                print(f"Error processing added ingredient {ingredient}: {str(e)}")
+                # Continue to next ingredient
+        
+        # Process updated ingredients
+        for ingredient in updated_ingredients:
+            try:
+                ingredient_name = ingredient[0]
+                quantity = ingredient[1] if ingredient[1] != "" else None
+                unit = ingredient[2] if ingredient[2] != "" else ""
+                
+                print(f"Updating ingredient: {ingredient_name}, {quantity}, {unit}")
+                
+                # Get a fresh connection for this operation
+                conn = get_db_connection()
+                cursor = conn.cursor(dictionary=True)
+                
+                try:
+                    # Find the ingredient
+                    cursor.execute("SELECT ingredient_id FROM ingredient WHERE name = %s", (ingredient_name,))
+                    ingredient_obj = cursor.fetchone()
+                    
+                    if not ingredient_obj:
+                        print(f"Ingredient not found: {ingredient_name}")
+                        # Skip this ingredient instead of failing the entire request
+                        continue
+                    
+                    ingredient_id = ingredient_obj["ingredient_id"]
+                    
+                    # Check if ingredient exists in pantry
+                    cursor.execute(
+                        "SELECT * FROM pantry_ingredient WHERE user_id = %s AND ingredient_id = %s",
+                        (uid, ingredient_id)
+                    )
+                    existing = cursor.fetchone()
+                    
+                    if not existing:
+                        print(f"Ingredient not in pantry: {ingredient_name}")
+                        # Skip this ingredient instead of failing
+                        continue
+                    
+                    # Update the entry
+                    cursor.execute(
+                        "UPDATE pantry_ingredient SET quantity = %s, unit = %s WHERE user_id = %s AND ingredient_id = %s",
+                        (quantity, unit, uid, ingredient_id)
+                    )
+                    
+                    conn.commit()
+                    
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Error updating ingredient {ingredient_name}: {str(e)}")
+                    # Continue to next ingredient
+                finally:
+                    cursor.close()
+                    conn.close()
+                
+            except Exception as e:
+                print(f"Error processing updated ingredient {ingredient}: {str(e)}")
+                # Continue to next ingredient
+        
+        # Process deleted ingredients - one at a time with separate connections
+        for ingredient_name in deleted_ingredients:
+            try:
+                print(f"Deleting ingredient: {ingredient_name}")
+                
+                # Get a fresh connection for this operation
+                conn = get_db_connection()
+                cursor = conn.cursor(dictionary=True)
+                
+                try:
+                    # Use a JOIN to make sure we only delete the right ingredient
+                    delete_query = """
+                    DELETE p FROM pantry_ingredient p
+                    JOIN ingredient i ON p.ingredient_id = i.ingredient_id
+                    WHERE p.user_id = %s AND i.name = %s
+                    """
+                    
+                    cursor.execute(delete_query, (uid, ingredient_name))
+                    
+                    if cursor.rowcount > 0:
+                        print(f"Successfully deleted {ingredient_name}")
+                    else:
+                        print(f"No matching pantry item found for {ingredient_name}")
+                    
+                    conn.commit()
+                    
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Error deleting ingredient {ingredient_name}: {str(e)}")
+                finally:
+                    cursor.close()
+                    conn.close()
+                
+            except Exception as e:
+                print(f"Error processing deleted ingredient {ingredient_name}: {str(e)}")
+                # Continue to next ingredient
+        
+        return jsonify({"message": "Successfully updated pantry."})
+        
+    except Exception as e:
+        print(f"Error in update_pantry: {str(e)}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
 
 
 @app.route("/save_recipe/<int:uid>", methods=["POST"])
