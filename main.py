@@ -424,41 +424,79 @@ def generate():
     data = request.json
     user_query = data.get("user_query")
     current_user_email = get_jwt_identity()
-    current_user = User.query.filter_by(email=current_user_email).first()
     
-    # Get the list of ingredients
-    pantry_ingredients = PantryIngredient.query.filter_by(user_id=current_user.user_id).all()
+    # Get the user from the database using the JWT identity (email)
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
     
-    # Join pantry ingredients with their names from the ingredient table
-    ingredients_list = []
-    for item in pantry_ingredients:
-        ingredient = Ingredient.query.get(item.ingredient_id)
-        if ingredient:
-            ingredients_list.append(f"{ingredient.name} ({item.quantity} {item.unit})")
+    try:
+        # Find the user ID from the email
+        cursor.execute("SELECT user_id FROM users WHERE email = %s", (current_user_email,))
+        user = cursor.fetchone()
+        
+        if not user:
+            return jsonify({"message": "User not found"}), 404
+        
+        user_id = user["user_id"]
+        
+        # Get the pantry ingredients for this user using the existing query
+        query = """
+        SELECT p.ingredient_id, p.user_id, p.quantity, p.unit, i.name
+        FROM pantry_ingredient p
+        JOIN ingredient i ON p.ingredient_id = i.ingredient_id
+        WHERE p.user_id = %s
+        """
+        
+        cursor.execute(query, (user_id,))
+        pantry_items = cursor.fetchall()
+        
+        # Format ingredients for the AI with consistent formatting
+        ingredients_list = []
+        for item in pantry_items:
+            # Format quantity if it exists
+            if item['quantity'] is not None and item['unit']:
+                ingredients_list.append(f"{item['name']} ({float(item['quantity'])} {item['unit']})")
+            elif item['quantity'] is not None:
+                ingredients_list.append(f"{item['name']} ({float(item['quantity'])})")
+            else:
+                ingredients_list.append(item['name'])
+        
+        # Join ingredients into a comma-separated string
+        ingredients = ", ".join(ingredients_list) if ingredients_list else ""
+        
+        print(f"User query: {user_query}")
+        print(f"Ingredients from pantry: {ingredients}")
+        
+        # Generate recipes using the ingredients and user query
+        result = generate_recipes_from_ingredients(user_query, ingredients)
+        
+        # Additional verification of results to ensure matching with pantry
+        if 'recipes' in result:
+            pantry_items_lower = [item['name'].lower() for item in pantry_items]
+            
+            for recipe in result['recipes']:
+                if 'missingIngredients' in recipe and recipe['missingIngredients']:
+                    # Clean up and verify missing ingredients
+                    missing_ingredients = []
+                    for missing in recipe['missingIngredients'].split(','):
+                        missing_item = missing.strip().lower()
+                        # Only keep as missing if truly not in pantry
+                        if not any(pantry_item in missing_item or missing_item in pantry_item 
+                                  for pantry_item in pantry_items_lower):
+                            missing_ingredients.append(missing.strip())
+                    
+                    # Update missing ingredients list
+                    recipe['missingIngredients'] = ", ".join(missing_ingredients)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"Error in recipe generation: {str(e)}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
     
-    # If no ingredients, use empty string
-    if not ingredients_list:
-        ingredients = ""
-    else:
-        ingredients = ", ".join(ingredients_list)
-    
-    print(f"User query: {user_query}")
-    print(f"Ingredients: {ingredients}")
-    
-    # Generate recipes using the ingredients and user query
-    result = generate_recipes_from_ingredients(user_query, ingredients)
-    
-    # Check if result has the expected structure
-    if 'recipes' not in result:
-        # If OpenAI didn't return a 'recipes' key, format it properly
-        if isinstance(result, dict) and any(key in result for key in ['error', 'raw_content']):
-            # Handle error case
-            return jsonify({"recipes": [], "error": result.get("error", "Unknown error occurred")})
-        else:
-            # Try to adapt the response to the expected format
-            return jsonify(result)
-    
-    return jsonify(result)
+    finally:
+        cursor.close()
+        conn.close()
 
 
 ##### Additional Helper Functions #####
