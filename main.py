@@ -15,6 +15,8 @@ from flask_jwt_extended import unset_jwt_cookies
 from recipe import generate_recipes_from_ingredients
 from recipe import getListOfIngredients
 from flask_cors import CORS
+import json
+
 
 
 db = mysql.connector.connect(
@@ -539,6 +541,297 @@ def remove_pantry_ingredient(uid, ingredient_id):
     db.session.commit()
     return True
 
+
+@app.route("/save_ai_recipe", methods=["POST"])
+@jwt_required()
+def save_ai_recipe():
+    try:
+        data = request.json
+        recipe_data = data.get("recipe")
+        current_user_email = get_jwt_identity()
+        
+        if not recipe_data:
+            return jsonify({"message": "No recipe data provided"}), 400
+        
+        # Get a fresh connection
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        try:
+            # Find the user ID from the email
+            cursor.execute("SELECT user_id FROM users WHERE email = %s", (current_user_email,))
+            user = cursor.fetchone()
+            
+            if not user:
+                return jsonify({"message": "User not found"}), 404
+            
+            user_id = user["user_id"]
+            
+            # Check if recipe name already exists for this user
+            recipe_name = recipe_data.get("recipeName") or recipe_data.get("name")
+            
+            cursor.execute(
+                """
+                SELECT r.recipe_id 
+                FROM recipe r 
+                JOIN user_favorite_recipes uf ON r.recipe_id = uf.recipe_id 
+                WHERE uf.user_id = %s AND r.name = %s
+                """, 
+                (user_id, recipe_name)
+            )
+            
+            existing_recipe = cursor.fetchone()
+            
+            if existing_recipe:
+                return jsonify({
+                    "message": "Recipe already saved to favorites",
+                    "recipe_id": existing_recipe["recipe_id"]
+                }), 200
+            
+            # Parse allergy flags
+            allergy_flags = recipe_data.get("allergyFlags", {})
+            is_vegetarian = allergy_flags.get("containsVegetarian", False)
+            contains_gluten = allergy_flags.get("containsGluten", False)
+            contains_nuts = allergy_flags.get("containsNuts", False)
+            
+            # Convert steps to JSON if it's a list
+            steps = recipe_data.get("steps", [])
+            steps_json = json.dumps(steps) if isinstance(steps, list) else steps
+            
+            # Insert the recipe
+            cursor.execute(
+                """
+                INSERT INTO recipe (name, description, steps, is_vegetarian, is_gluten_free, is_nut_free) 
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    recipe_name,
+                    recipe_data.get("description", ""),
+                    steps_json,
+                    is_vegetarian,
+                    not contains_gluten,
+                    not contains_nuts
+                )
+            )
+            
+            conn.commit()
+            recipe_id = cursor.lastrowid
+            
+            # Process ingredients
+            ingredients_list = recipe_data.get("ingredients", "").split(", ")
+            for ingredient_name in ingredients_list:
+                ingredient_name = ingredient_name.strip()
+                if not ingredient_name:
+                    continue
+                    
+                # Check if ingredient exists
+                cursor.execute("SELECT ingredient_id FROM ingredient WHERE name = %s", (ingredient_name,))
+                ingredient = cursor.fetchone()
+                
+                if not ingredient:
+                    # Create new ingredient
+                    cursor.execute(
+                        """
+                        INSERT INTO ingredient (name, contains_nuts, contains_gluten, contains_meat) 
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (
+                            ingredient_name,
+                            False,  # Default values, can be updated later
+                            False,
+                            False
+                        )
+                    )
+                    conn.commit()
+                    ingredient_id = cursor.lastrowid
+                else:
+                    ingredient_id = ingredient["ingredient_id"]
+                
+                # Create recipe ingredient relationship
+                cursor.execute(
+                    """
+                    INSERT INTO recipe_ingredient (recipe_id, ingredient_id, quantity, unit) 
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (
+                        recipe_id,
+                        ingredient_id,
+                        1.0,  # Default values, can be updated later
+                        "unit"
+                    )
+                )
+                conn.commit()
+            
+            # Add to user favorites
+            cursor.execute(
+                "INSERT INTO user_favorite_recipes (user_id, recipe_id) VALUES (%s, %s)",
+                (user_id, recipe_id)
+            )
+            conn.commit()
+            
+            return jsonify({
+                "message": "Recipe saved to favorites successfully", 
+                "recipe_id": recipe_id
+            }), 201
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"Database error: {str(e)}")
+            return jsonify({"message": f"Server error: {str(e)}"}), 500
+        
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error in save_ai_recipe: {str(e)}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+@app.route("/get_favorites", methods=["GET"])
+@jwt_required()
+def get_favorites():
+    try:
+        current_user_email = get_jwt_identity()
+        
+        # Get a fresh connection
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        try:
+            # Find the user ID from the email
+            cursor.execute("SELECT user_id FROM users WHERE email = %s", (current_user_email,))
+            user = cursor.fetchone()
+            
+            if not user:
+                return jsonify({"message": "User not found"}), 404
+            
+            user_id = user["user_id"]
+            
+            # Get all favorite recipes for this user with full recipe details
+            query = """
+            SELECT 
+                r.recipe_id,
+                r.name,
+                r.description,
+                r.steps,
+                r.is_vegetarian,
+                r.is_gluten_free,
+                r.is_nut_free
+            FROM 
+                recipe r
+            JOIN 
+                user_favorite_recipes uf ON r.recipe_id = uf.recipe_id
+            WHERE 
+                uf.user_id = %s
+            ORDER BY 
+                r.recipe_id DESC
+            """
+            
+            cursor.execute(query, (user_id,))
+            recipes = cursor.fetchall()
+            
+            # Format the results
+            formatted_recipes = []
+            for recipe in recipes:
+                # Get ingredients for this recipe
+                cursor.execute("""
+                    SELECT i.name 
+                    FROM ingredient i
+                    JOIN recipe_ingredient ri ON i.ingredient_id = ri.ingredient_id
+                    WHERE ri.recipe_id = %s
+                """, (recipe["recipe_id"],))
+                
+                ingredients = cursor.fetchall()
+                ingredients_list = [ingredient["name"] for ingredient in ingredients]
+                
+                # Parse steps from JSON if needed
+                try:
+                    steps = json.loads(recipe["steps"]) if recipe["steps"] else []
+                except (json.JSONDecodeError, TypeError):
+                    steps = [recipe["steps"]] if recipe["steps"] else []
+                
+                # Add to formatted recipes
+                formatted_recipes.append({
+                    "id": recipe["recipe_id"],
+                    "recipeName": recipe["name"],
+                    "name": recipe["name"],
+                    "description": recipe["description"],
+                    "steps": steps,
+                    "ingredients": ", ".join(ingredients_list),
+                    "allergyFlags": {
+                        "containsVegetarian": recipe["is_vegetarian"],
+                        "containsGluten": not recipe["is_gluten_free"],
+                        "containsNuts": not recipe["is_nut_free"],
+                        "containsMeat": not recipe["is_vegetarian"]
+                    }
+                })
+            
+            return jsonify({"favorites": formatted_recipes})
+            
+        except Exception as e:
+            print(f"Database error: {str(e)}")
+            return jsonify({"message": f"Server error: {str(e)}"}), 500
+        
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error in get_favorites: {str(e)}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+@app.route("/remove_favorite/<int:recipe_id>", methods=["DELETE"])
+@jwt_required()
+def remove_favorite(recipe_id):
+    try:
+        current_user_email = get_jwt_identity()
+        
+        # Get a fresh connection
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        try:
+            # Find the user ID from the email
+            cursor.execute("SELECT user_id FROM users WHERE email = %s", (current_user_email,))
+            user = cursor.fetchone()
+            
+            if not user:
+                return jsonify({"message": "User not found"}), 404
+            
+            user_id = user["user_id"]
+            
+            # Check if the favorite exists
+            cursor.execute(
+                "SELECT * FROM user_favorite_recipes WHERE user_id = %s AND recipe_id = %s",
+                (user_id, recipe_id)
+            )
+            
+            favorite = cursor.fetchone()
+            if not favorite:
+                return jsonify({"message": "Recipe not found in your favorites"}), 404
+            
+            # Remove the favorite
+            cursor.execute(
+                "DELETE FROM user_favorite_recipes WHERE user_id = %s AND recipe_id = %s",
+                (user_id, recipe_id)
+            )
+            
+            conn.commit()
+            
+            return jsonify({"message": "Recipe removed from favorites successfully"})
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"Database error: {str(e)}")
+            return jsonify({"message": f"Server error: {str(e)}"}), 500
+        
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error in remove_favorite: {str(e)}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
 
 if __name__ == "__main__":
     #with app.app_context():
